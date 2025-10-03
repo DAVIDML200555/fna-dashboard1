@@ -447,7 +447,9 @@ def update_dashboard(map_type, office_range, selected_regions, n_clicks):
         filtered_data = data_unida_global.copy()
         
         if selected_regions:
-            filtered_data = filtered_data[filtered_data['DPTO_CNMBR'].isin(selected_regions)]
+            filtered_data = filtered_data[filtered_data['DPTO_CNMBR_NORM'].isin(selected_regions)]
+
+
         
         filtered_data = filtered_data[
             (filtered_data['cantidad_oficinas'] >= office_range[0]) & 
@@ -473,7 +475,8 @@ def update_dashboard(map_type, office_range, selected_regions, n_clicks):
         
         # Opciones para el filtro de región
         region_options = [{'label': depto, 'value': depto} 
-                         for depto in sorted(data_unida_global['DPTO_CNMBR'].unique())]
+                        for depto in sorted(data_unida_global['DPTO_CNMBR_NORM'].unique())]
+
         
         return (map_html, total_oficinas, total_departamentos, min_oficinas, 
                 max_oficinas, top_chart, dist_chart, table, region_options)
