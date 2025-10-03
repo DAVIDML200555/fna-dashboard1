@@ -1,0 +1,11 @@
+dash==2.14.2
+pandas==2.0.3
+geopandas==0.13.0
+folium==0.14.0
+branca==0.6.0
+plotly==5.15.0
+gunicorn==21.2.0
+shapely==1.8.5
+pyproj==3.4.1
+flask==2.3.3
+numpy==1.24.3
