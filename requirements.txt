@@ -10,4 +10,6 @@ pyproj==3.4.1
 flask==2.3.3
 numpy==1.24.3
 fiona==1.8.22
-
+pip>=25.2
+setuptools>=75.0.0
+wheel
