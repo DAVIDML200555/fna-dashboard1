@@ -422,7 +422,7 @@ def create_sample_data():
 # Cargar datos una vez al inicio
 data_unida_global, df_global = load_and_process_data()
 
-# Callbacks principales
+# Callbacks principales - CORREGIDO
 @callback(
     [Output('folium-map', 'srcDoc'),
      Output('total-oficinas', 'children'),
@@ -443,14 +443,14 @@ def update_dashboard(map_type, office_range, selected_regions, n_clicks):
         if data_unida_global is None or df_global is None:
             raise Exception("No se pudieron cargar los datos")
         
-        # Aplicar filtros
+        # Aplicar filtros - CORREGIDO
         filtered_data = data_unida_global.copy()
         
+        # Manejar caso cuando selected_regions es None o vacío
         if selected_regions:
             filtered_data = filtered_data[filtered_data['DPTO_CNMBR_NORM'].isin(selected_regions)]
-
-
         
+        # Aplicar filtro de rango de oficinas
         filtered_data = filtered_data[
             (filtered_data['cantidad_oficinas'] >= office_range[0]) & 
             (filtered_data['cantidad_oficinas'] <= office_range[1])
@@ -462,22 +462,18 @@ def update_dashboard(map_type, office_range, selected_regions, n_clicks):
         max_oficinas = int(data_unida_global['cantidad_oficinas'].max())
         min_oficinas = int(data_unida_global[data_unida_global['cantidad_oficinas'] > 0]['cantidad_oficinas'].min())
         
-        # Crear mapa Folium - SIEMPRE se crea el mapa, incluso si no hay datos filtrados
+        # Crear componentes
         mapa = create_folium_map(data_unida_global, filtered_data, map_type)
-        map_html = mapa._repr_html_()
+        map_html = mapa._repr_html_() if mapa else "<div>Error creando mapa</div>"
         
-        # Crear gráficos
         top_chart = create_top_departments_chart(data_unida_global)
         dist_chart = create_distribution_chart(data_unida_global)
-        
-        # Crear tabla de datos
         table = create_data_table(data_unida_global)
         
         # Opciones para el filtro de región
         region_options = [{'label': depto, 'value': depto} 
                         for depto in sorted(data_unida_global['DPTO_CNMBR_NORM'].unique())]
 
-        
         return (map_html, total_oficinas, total_departamentos, min_oficinas, 
                 max_oficinas, top_chart, dist_chart, table, region_options)
     
@@ -488,23 +484,29 @@ def update_dashboard(map_type, office_range, selected_regions, n_clicks):
         empty_fig.add_annotation(text="Error cargando los datos", 
                                xref="paper", yref="paper", x=0.5, y=0.5, 
                                showarrow=False)
+        
+        region_options = [{'label': 'Error', 'value': 'error'}]
+        
         return ("<div style='padding: 20px; text-align: center;'><h3>Error cargando los datos</h3></div>", 
                 "71", "33", "1", "20", empty_fig, empty_fig, 
-                html.Div("Error cargando datos"), [])
+                html.Div("Error cargando datos"), region_options)
 
 def create_folium_map(all_data, filtered_data, map_type):
-    """Crear mapa Folium con sistema de dos capas"""
+    """Crear mapa Folium con sistema de dos capas - CORREGIDO"""
     mapa = folium.Map(location=[4.5709, -74.2973], zoom_start=5)
     
     # PRIMERA CAPA: Todos los departamentos en gris claro
-    folium.GeoJson(
-        all_data,
-        style_function=lambda feature: {
-            'fillColor': '#F7F7F7FF',  # Gris claro para todos los departamentos
+    def base_style_function(feature):
+        return {
+            'fillColor': '#F7F7F7FF',
             'color': 'black',  
             'weight': 1.1,
             'fillOpacity': 0.6
-        },
+        }
+    
+    folium.GeoJson(
+        all_data,
+        style_function=base_style_function,
         tooltip=folium.GeoJsonTooltip(
             fields=['DPTO_CNMBR', 'cantidad_oficinas'],
             aliases=['Departamento: ', 'Oficinas: '],
@@ -521,12 +523,16 @@ def create_folium_map(all_data, filtered_data, map_type):
             color_dict = {valor: colores_ylorrd_compacta[i % len(colores_ylorrd_compacta)] 
                          for i, valor in enumerate(valores_unicos)}
             
-            style_function = lambda feature: {
-                'fillColor': color_dict.get(feature['properties']['cantidad_oficinas'], '#CCCCCC'),
-                'color': 'black',  
-                'weight': 1.1,  # Línea más gruesa para destacar
-                'fillOpacity': 0.6
-            }
+            def thematic_style_function(feature):
+                cantidad = feature['properties']['cantidad_oficinas']
+                return {
+                    'fillColor': color_dict.get(cantidad, '#CCCCCC'),
+                    'color': 'black',  
+                    'weight': 1.1,
+                    'fillOpacity': 0.6
+                }
+            
+            style_function = thematic_style_function
             
             # Leyenda para mapa temático
             legend_html = '''
@@ -556,12 +562,16 @@ def create_folium_map(all_data, filtered_data, map_type):
             valores_unicos = sorted(filtered_data['cantidad_oficinas'].unique())
             color_dict = {valor: colores_azules[i % len(colores_azules)] for i, valor in enumerate(valores_unicos)}
             
-            style_function = lambda feature: {
-                'fillColor': color_dict.get(feature['properties']['cantidad_oficinas'], '#CCCCCC'),
-                'color': 'black',  
-                'weight': 1.1,  # Línea más gruesa para destacar
-                'fillOpacity': 0.6
-            }
+            def blues_style_function(feature):
+                cantidad = feature['properties']['cantidad_oficinas']
+                return {
+                    'fillColor': color_dict.get(cantidad, '#CCCCCC'),
+                    'color': 'black',  
+                    'weight': 1.1,
+                    'fillOpacity': 0.6
+                }
+            
+            style_function = blues_style_function
             
             # Leyenda para mapa azul
             legend_html = '''
