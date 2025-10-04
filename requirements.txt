@@ -1,9 +1,8 @@
 streamlit==1.38.0
 pandas==2.2.3
-geopandas==0.14.4
+geopandas
 shapely==2.0.6
-pyproj==3.6.1
+pyproj
 fiona==1.9.6
 matplotlib==3.9.2
-
 
