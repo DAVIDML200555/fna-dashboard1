@@ -1,360 +1,57 @@
 import warnings
 warnings.filterwarnings("ignore")
 
-import os
-import geopandas as gpd
+import streamlit as st
 import pandas as pd
+import geopandas as gpd
 import folium
-import branca.colormap as cm
-from shapely.geometry import Point
-import json
-
-import dash
-from dash import dcc, html, Input, Output, callback
+from streamlit_folium import st_folium
 import plotly.express as px
 import plotly.graph_objects as go
+from shapely.geometry import Point
 
-# Inicializar la aplicación Dash con supresión de excepciones de callback
-app = dash.Dash(__name__, suppress_callback_exceptions=True)
-server = app.server
+# Configuración de la página
+st.set_page_config(
+    page_title="Análisis FNA - Oficinas Colombia",
+    page_icon="🏦",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Configuración del layout con pestañas
-app.layout = html.Div([
-    # Header
-    html.Div([
-        html.Div([
-            html.H1("Análisis de la Red de Oficinas del Fondo Nacional del Ahorro", 
-                   style={'color': 'white', 'marginBottom': '10px'}),
-            html.P("Dashboard interactivo - Distribución territorial de oficinas en Colombia", 
-                  style={'color': 'white', 'marginBottom': '0px', 'fontSize': '18px'})
-        ], style={'maxWidth': '1200px', 'margin': '0 auto'})
-    ], style={'background': 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
-              'padding': '2rem 0', 'marginBottom': '2rem'}),
-    
-    # Pestañas
-    dcc.Tabs(id="tabs", value='tab-contexto', children=[
-        dcc.Tab(label='📋 Contexto y Metodología', value='tab-contexto'),
-        dcc.Tab(label='📊 Análisis Visual', value='tab-analisis'),
-        dcc.Tab(label='📈 Conclusiones', value='tab-conclusiones'),
-    ], style={'fontFamily': 'Arial', 'fontWeight': 'bold'}),
-    
-    html.Div(id='tabs-content')
-], style={'fontFamily': 'Arial, sans-serif', 'minHeight': '100vh', 'backgroundColor': '#f8f9fa'})
+# Estilos CSS personalizados
+st.markdown("""
+<style>
+    .main-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem 0;
+        margin-bottom: 2rem;
+        border-radius: 10px;
+    }
+    .metric-card {
+        background-color: white;
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .section-card {
+        background-color: white;
+        padding: 2rem;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+    .section-header {
+        background-color: #2c3e50;
+        color: white;
+        padding: 1rem;
+        margin: 0;
+        border-radius: 10px 10px 0 0;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# Contenido de la pestaña de Contexto
-contexto_content = html.Div([
-    html.Div([
-        html.Div([
-            html.H2("Contexto del Estudio", style={'color': '#2c3e50', 'marginBottom': '20px', 'textAlign': 'center'}),
-            html.P([
-                "El presente informe analiza la estructura y distribución de la red de oficinas del ",
-                html.Strong("Fondo Nacional del Ahorro (FNA)"), 
-                ", institución de carácter oficial que cumple una función fundamental en el sistema de ahorro y crédito para vivienda en Colombia. Los datos utilizados en este estudio, actualizados al ",
-                html.Strong("25 de agosto de 2025"), 
-                ", fueron proporcionados oficialmente por el Fondo Nacional del Ahorro a través del portal de datos abiertos del Gobierno Colombiano en ",
-                html.A("datos.gov.co", href="https://www.datos.gov.co/Vivienda-Ciudad-y-Territorio/Oficinas-Fondo-Nacional-del-Ahorro/h3sz-zqij/about_data", target="_blank"),
-                "."
-            ], style={'textAlign': 'justify', 'lineHeight': '1.6', 'marginBottom': '15px'}),
-            
-            html.P([
-                "El conjunto de datos constituye un registro completo de la infraestructura física de atención al público del FNA, donde cada registro representa una ",
-                html.Strong("sede u oficina operativa"), 
-                " de la entidad en el territorio nacional. Esta información es de vital importancia para comprender la capacidad institucional de cobertura, el acceso a servicios financieros de vivienda por parte de la ciudadanía y la presencia territorial de una de las entidades más importantes del sector."
-            ], style={'textAlign': 'justify', 'lineHeight': '1.6', 'marginBottom': '15px'}),
-            
-            html.P([
-                "La disponibilidad de estos datos mediante la política de ",
-                html.Strong("Gobierno Abierto"), 
-                " implementada por el Gobierno de Colombia, refleja el compromiso del Estado con la transparencia y la rendición de cuentas, permitiendo a ciudadanos, investigadores y tomadores de decisiones realizar análisis basados en evidencia sobre la prestación de servicios públicos."
-            ], style={'textAlign': 'justify', 'lineHeight': '1.6', 'marginBottom': '15px'}),
-            
-            html.H3("Metodología", style={'color': '#2c3e50', 'marginTop': '30px', 'marginBottom': '15px'}),
-            html.Ul([
-                html.Li("Fuente de datos: Portal de Datos Abiertos de Colombia (datos.gov.co)"),
-                html.Li("Shapefile: Departamento Administrativo Nacional de Estadística (DANE)"),
-                html.Li("Procesamiento: Python con Pandas, GeoPandas y Folium"),
-                html.Li("Visualización: Dash y Plotly para interactividad")
-            ], style={'lineHeight': '1.8'}),
-            
-            html.H3("Objetivos del Análisis", style={'color': '#2c3e50', 'marginTop': '30px', 'marginBottom': '15px'}),
-            html.Ul([
-                html.Li("Identificar patrones de distribución territorial de las oficinas del FNA"),
-                html.Li("Analizar desigualdades regionales en la cobertura de servicios"),
-                html.Li("Visualizar la concentración geográfica de la infraestructura financiera"),
-                html.Li("Proporcionar insights para políticas públicas de inclusión financiera")
-            ], style={'lineHeight': '1.8'})
-            
-        ], style={'padding': '2rem', 'backgroundColor': 'white', 'borderRadius': '10px', 
-                 'boxShadow': '0 4px 6px rgba(0,0,0,0.1)'})
-    ], style={'maxWidth': '1000px', 'margin': '0 auto', 'padding': '20px'})
-])
-
-# Contenido de la pestaña de Conclusiones
-conclusiones_content = html.Div([
-    html.Div([
-        html.Div([
-            html.H2("Interpretación de los Resultados y Conclusiones", 
-                   style={'color': '#2c3e50', 'marginBottom': '25px', 'textAlign': 'center'}),
-            
-            html.H3("Distribución de Oficinas del Fondo Nacional del Ahorro por Departamento", 
-                   style={'color': '#34495e', 'marginTop': '30px', 'marginBottom': '15px'}),
-            
-            html.H4("Regiones con Valores Más Altos:", style={'color': '#2c3e50', 'marginTop': '20px'}),
-            html.Ul([
-                html.Li([
-                    html.Strong("Bogotá D.C. domina ampliamente"), 
-                    " con 20 oficinas, concentrando el mayor número a nivel nacional."
-                ]),
-                html.Li([
-                    html.Strong("Región Andina Central"), 
-                    ": Departamentos como Cundinamarca, Antioquia y Valle del Cauca presentan 4 oficinas cada uno, mostrando una presencia significativa."
-                ]),
-                html.Li([
-                    html.Strong("Zonas Intermedias"), 
-                    ": Tolima, Santander y Nariño tienen 3 oficinas cada uno, indicando una cobertura media-alta."
-                ])
-            ], style={'lineHeight': '1.8', 'marginBottom': '20px'}),
-            
-            html.H4("Desigualdades Territoriales Evidentes:", style={'color': '#2c3e50', 'marginTop': '20px'}),
-            html.Ul([
-                html.Li([
-                    html.Strong("Disparidad Extrema"), 
-                    ": Bogotá tiene 20 veces más oficinas que la mayoría de departamentos (que solo tienen 1)."
-                ]),
-                html.Li([
-                    html.Strong("Centralismo Marcado"), 
-                    ": La región central (Andina) concentra la mayoría de oficinas, mientras que:"
-                ]),
-                html.Ul([
-                    html.Li("Región Caribe: Ningún departamento supera las 2 oficinas"),
-                    html.Li("Región Pacífica: Chocó y Cauca solo tienen 1 oficina cada uno"),
-                    html.Li("Región Amazónica: Amazonas, Guainía, Guaviare, Vaupés tienen solo 1 oficina para vastos territorios"),
-                    html.Li("Región Orinoquía: Arauca, Casanare, Vichada con apenas 1 oficina cada uno")
-                ], style={'marginLeft': '20px', 'marginTop': '10px'})
-            ], style={'lineHeight': '1.8', 'marginBottom': '20px'}),
-            
-            html.H4("Factores Explicativos de las Diferencias:", style={'color': '#2c3e50', 'marginTop': '20px'}),
-            
-            html.H5("Factores Demográficos y Económicos:", style={'color': '#34495e', 'marginTop': '15px'}),
-            html.Ul([
-                html.Li("Densidad Poblacional: Bogotá y departamentos andinos tienen mayor población"),
-                html.Li("Desarrollo Económico: Regiones con mayor actividad económica demandan más servicios financieros"),
-                html.Li("Urbanización: Áreas urbanas concentran mayor demanda de créditos de vivienda")
-            ], style={'lineHeight': '1.8', 'marginBottom': '15px'}),
-            
-            html.H5("Factores Geográficos y Logísticos:", style={'color': '#34495e', 'marginTop': '15px'}),
-            html.Ul([
-                html.Li("Accesibilidad: Departamentos remotos (Amazonas, Guainía) presentan desafíos de conectividad"),
-                html.Li("Extensión Territorial: Departamentos grandes con baja densidad (Vichada, Guaviare) tienen menor cobertura")
-            ], style={'lineHeight': '1.8', 'marginBottom': '15px'}),
-            
-            html.H5("Factores Institucionales y Históricos:", style={'color': '#34495e', 'marginTop': '15px'}),
-            html.Ul([
-                html.Li("Enfoque de Mercado: Priorización de zonas con mayor potencial of cartera"),
-                html.Li("Infraestructura Existente: Limitaciones en instalación de oficinas en zonas periféricas")
-            ], style={'lineHeight': '1.8', 'marginBottom': '20px'}),
-            
-            html.Div([
-                html.H4("Conclusión Principal", style={'color': '#2c3e50', 'textAlign': 'center'}),
-                html.P([
-                    "La distribución refleja patrones históricos de desarrollo desigual en Colombia, donde las regiones centrales concentran la infraestructura financiera mientras las periféricas enfrentan limitaciones de acceso."
-                ], style={'textAlign': 'center', 'fontStyle': 'italic', 'fontSize': '18px', 
-                         'padding': '20px', 'backgroundColor': '#f8f9fa', 'borderRadius': '10px'})
-            ], style={'marginTop': '30px', 'marginBottom': '30px'}),
-            
-            html.H3("La Georreferenciación como Herramienta Clave para el Análisis Social", 
-                   style={'color': '#34495e', 'marginTop': '40px', 'marginBottom': '15px'}),
-            
-            html.P([
-                "El análisis georreferenciado de la distribución de oficinas del Fondo Nacional del Ahorro evidencia la ",
-                html.Strong("capacidad transformadora de los datos espaciales"), 
-                " en estudios sociales. La visualización espacial no solo permite identificar patrones geográficos de concentración y exclusión, sino que ",
-                html.Strong("revela dimensiones críticas del desarrollo territorial"), 
-                " que pasarían desapercibidas en análisis tabulares convencionales."
-            ], style={'textAlign': 'justify', 'lineHeight': '1.6', 'marginBottom': '15px'}),
-            
-            html.P([
-                "La georreferenciación ",
-                html.Strong("materializa las desigualdades"), 
-                ", transformando datos abstractos en realidades tangibles: muestra cómo el centralismo bogotano se impone sobre las periferias, cómo la región Caribe a pesar de su extensión y población mantiene una cobertura marginal, y cómo la Amazonia y Orinoquia enfrentan desafíos de inclusión financiera proporcionales a su vastedad territorial."
-            ], style={'textAlign': 'justify', 'lineHeight': '1.6', 'marginBottom': '15px'}),
-            
-            html.P([
-                "Este ejercicio demuestra que ",
-                html.Strong("la geografía no es solo un contenedor de fenómenos sociales, sino un factor activo"), 
-                " que configura oportunidades de acceso. La disposición espacial de la infraestructura financiera refleja y, a la vez, reproduce dinámicas de desarrollo desigual, haciendo evidente la ",
-                html.Strong("necesidad de políticas públicas con enfoque territorial diferenciado"), 
-                "."
-            ], style={'textAlign': 'justify', 'lineHeight': '1.6', 'marginBottom': '15px'}),
-            
-            html.H4("Aportes de la Georreferenciación para la Equidad", style={'color': '#2c3e50', 'marginTop': '25px'}),
-            html.Ul([
-                html.Li("Identificar brechas de cobertura con precisión"),
-                html.Li("Priorizar inversiones en territorios históricamente marginados"),
-                html.Li("Diseñar estrategias adaptadas a las realidades regionales"),
-                html.Li("Evaluar impactos de políticas con dimensión espacial")
-            ], style={'lineHeight': '1.8', 'marginBottom': '20px'})
-            
-        ], style={'padding': '2rem', 'backgroundColor': 'white', 'borderRadius': '10px', 
-                 'boxShadow': '0 4px 6px rgba(0,0,0,0.1)'})
-    ], style={'maxWidth': '1000px', 'margin': '0 auto', 'padding': '20px'})
-])
-
-# Callback para las pestañas
-@callback(Output('tabs-content', 'children'),
-              Input('tabs', 'value'))
-def render_content(tab):
-    if tab == 'tab-contexto':
-        return contexto_content
-    elif tab == 'tab-conclusiones':
-        return conclusiones_content
-    elif tab == 'tab-analisis':
-        return html.Div([
-            # Contenido principal del análisis
-            html.Div([
-                # Primera fila: Estadísticas clave
-                html.Div([
-                    html.Div([
-                        html.Div([
-                            html.Div(id="total-oficinas", style={'fontSize': '2.5rem', 'fontWeight': 'bold', 'color': '#2c3e50'}),
-                            html.Div("Total Oficinas", style={'fontSize': '1rem', 'color': '#7f8c8d'})
-                        ], style={'textAlign': 'center', 'padding': '1rem', 
-                                 'backgroundColor': 'white', 'borderRadius': '10px', 
-                                 'boxShadow': '0 4px 6px rgba(0,0,0,0.1)', 'height': '100%'})
-                    ], style={'width': '24%', 'display': 'inline-block', 'margin': '0.5%'}),
-                    
-                    html.Div([
-                        html.Div([
-                            html.Div(id="total-departamentos", style={'fontSize': '2.5rem', 'fontWeight': 'bold', 'color': '#2c3e50'}),
-                            html.Div("Departamentos con Cobertura", style={'fontSize': '1rem', 'color': '#7f8c8d'})
-                        ], style={'textAlign': 'center', 'padding': '1rem', 
-                                 'backgroundColor': 'white', 'borderRadius': '10px', 
-                                 'boxShadow': '0 4px 6px rgba(0,0,0,0.1)', 'height': '100%'})
-                    ], style={'width': '24%', 'display': 'inline-block', 'margin': '0.5%'}),
-                    
-                    html.Div([
-                        html.Div([
-                            html.Div(id="min-oficinas", style={'fontSize': '2.5rem', 'fontWeight': 'bold', 'color': '#2c3e50'}),
-                            html.Div("Mín. Oficinas por Depto", style={'fontSize': '1rem', 'color': '#7f8c8d'})
-                        ], style={'textAlign': 'center', 'padding': '1rem', 
-                                 'backgroundColor': 'white', 'borderRadius': '10px', 
-                                 'boxShadow': '0 4px 6px rgba(0,0,0,0.1)', 'height': '100%'})
-                    ], style={'width': '24%', 'display': 'inline-block', 'margin': '0.5%'}),
-                    
-                    html.Div([
-                        html.Div([
-                            html.Div(id="max-oficinas", style={'fontSize': '2.5rem', 'fontWeight': 'bold', 'color': '#2c3e50'}),
-                            html.Div("Máx. Oficinas por Depto", style={'fontSize': '1rem', 'color': '#7f8c8d'})
-                        ], style={'textAlign': 'center', 'padding': '1rem', 
-                                 'backgroundColor': 'white', 'borderRadius': '10px', 
-                                 'boxShadow': '0 4px 6px rgba(0,0,0,0.1)', 'height': '100%'})
-                    ], style={'width': '24%', 'display': 'inline-block', 'margin': '0.5%'})
-                ], style={'marginBottom': '2rem', 'textAlign': 'center', 'display': 'flex', 'justifyContent': 'space-between'}),
-                
-                # Segunda fila: Mapa y controles AL LADO
-                html.Div([
-                    # Columna del mapa
-                    html.Div([
-                        html.Div([
-                            html.H4("Distribución Geográfica de Oficinas", 
-                                   style={'backgroundColor': '#2c3e50', 'color': 'white', 'padding': '1rem', 
-                                         'margin': '0', 'borderRadius': '10px 10px 0 0'}),
-                            html.Div([
-                                html.Iframe(id='folium-map', style={'width': '100%', 'height': '500px', 'border': 'none'})
-                            ], style={'padding': '1rem'})
-                        ], style={'backgroundColor': 'white', 'borderRadius': '10px', 
-                                 'boxShadow': '0 4px 6px rgba(0,0,0,0.1)', 'height': '100%'})
-                    ], style={'width': '65%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '10px'}),
-                    
-                    # Columna de controles (al lado del mapa)
-                    html.Div([
-                        html.Div([
-                            html.H4("Controles de Visualización", 
-                                   style={'backgroundColor': '#2c3e50', 'color': 'white', 'padding': '1rem', 
-                                         'margin': '0', 'borderRadius': '10px 10px 0 0'}),
-                            html.Div([
-                                html.Label("Tipo de Mapa:", style={'fontWeight': 'bold', 'display': 'block', 'marginBottom': '8px', 'marginTop': '5px'}),
-                                dcc.Dropdown(
-                                    id='map-type-selector',
-                                    options=[
-                                        {'label': '🎨 Mapa Temático (Escala de Colores)', 'value': 'thematic'},
-                                        {'label': '🔵 Mapa Temático (Escala de Azules)', 'value': 'blues'}
-                                    ],
-                                    value='thematic',
-                                    style={'marginBottom': '15px'}
-                                ),
-                                
-                                html.Label("Filtrar por Número de Oficinas:", 
-                                         style={'fontWeight': 'bold', 'display': 'block', 'marginTop': '20px', 'marginBottom': '15px'}),
-                                dcc.RangeSlider(
-                                    id='office-slider',
-                                    min=1,
-                                    max=20,
-                                    step=1,
-                                    value=[1, 20],
-                                    marks={1: '1', 2: '2', 3: '3', 4: '4', 20: '20'},
-                                    tooltip={"placement": "bottom", "always_visible": False}
-                                ),
-                                
-                                html.Label("Filtrar por Región:", 
-                                         style={'fontWeight': 'bold', 'display': 'block', 'marginTop': '25px', 'marginBottom': '8px'}),
-                                dcc.Dropdown(
-                                    id='region-filter',
-                                    multi=True,
-                                    placeholder="Seleccione regiones...",
-                                    style={'marginBottom': '20px'}
-                                ),
-                                
-                                html.Button("🔄 Resetear Filtros", id="reset-filters", 
-                                           style={'width': '100%', 'padding': '12px', 
-                                                 'border': '1px solid #007bff', 'backgroundColor': 'transparent',
-                                                 'color': '#007bff', 'borderRadius': '5px', 'cursor': 'pointer',
-                                                 'fontWeight': 'bold', 'marginTop': '10px', 'transition': 'all 0.3s ease'},
-                                           n_clicks=0)
-                            ], style={'padding': '1.5rem'})
-                        ], style={'backgroundColor': 'white', 'borderRadius': '10px', 
-                                 'boxShadow': '0 4px 6px rgba(0,0,0,0.1)', 'height': '100%'})
-                    ], style={'width': '33%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '10px'})
-                ], style={'marginBottom': '2rem', 'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'flex-start'}),
-                
-                # Tercera fila: Gráficos (al lado) - CORREGIDO
-                html.Div([
-                    html.Div([
-                        html.Div([
-                            html.H4("Top 7 Departamentos con Más Oficinas", 
-                                   style={'backgroundColor': '#2c3e50', 'color': 'white', 'padding': '1rem', 
-                                         'margin': '0', 'borderRadius': '10px 10px 0 0'}),
-                            dcc.Graph(id='top-departments-chart')
-                        ], style={'backgroundColor': 'white', 'borderRadius': '10px', 
-                                 'boxShadow': '0 4px 6px rgba(0,0,0,0.1)', 'height': '100%'})
-                    ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '10px'}),
-                    
-                    html.Div([
-                        html.Div([
-                            html.H4("Distribución por Número de Oficinas", 
-                                   style={'backgroundColor': '#2c3e50', 'color': 'white', 'padding': '1rem', 
-                                         'margin': '0', 'borderRadius': '10px 10px 0 0'}),
-                            dcc.Graph(id='distribution-chart')
-                        ], style={'backgroundColor': 'white', 'borderRadius': '10px', 
-                                 'boxShadow': '0 4px 6px rgba(0,0,0,0.1)', 'height': '100%'})
-                    ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '10px'})
-                ], style={'marginBottom': '2rem'}),  # ELIMINADO display: flex
-                
-                # Cuarta fila: Tabla de datos mejorada
-                html.Div([
-                    html.Div([
-                        html.Div([
-                            html.H4("📋 Detalle de Oficinas por Departamento", 
-                                   style={'backgroundColor': '#2c3e50', 'color': 'white', 'padding': '1rem', 
-                                         'margin': '0', 'borderRadius': '10px 10px 0 0'}),
-                            html.Div(id='data-table-container', style={'padding': '1rem', 'maxHeight': '500px', 'overflowY': 'auto'})
-                        ], style={'backgroundColor': 'white', 'borderRadius': '10px', 
-                                 'boxShadow': '0 4px 6px rgba(0,0,0,0.1)'})
-                    ], style={'width': '100%', 'padding': '10px'})
-                ])
-            ], style={'maxWidth': '1200px', 'margin': '0 auto', 'backgroundColor': '#f8f9fa', 'padding': '20px'})
-        ])
-
+@st.cache_data
 def load_and_process_data():
     """Cargar y procesar los datos una vez al inicio"""
     try:
@@ -405,7 +102,7 @@ def load_and_process_data():
         return data_unida, df
         
     except Exception as e:
-        print(f"Error cargando datos: {e}")
+        st.error(f"Error cargando datos: {e}")
         # Retornar datos de ejemplo si hay error
         return create_sample_data(), pd.DataFrame()
 
@@ -415,84 +112,12 @@ def create_sample_data():
         'DPTO_CNMBR': ['BOGOTA, D.C.', 'ANTIOQUIA', 'VALLE DEL CAUCA', 'CUNDINAMARCA', 
                       'SANTANDER', 'NARIÑO', 'TOLIMA', 'ATLANTICO', 'BOLIVAR', 'BOYACA'],
         'cantidad_oficinas': [20, 4, 4, 4, 3, 3, 3, 2, 2, 2],
-        'geometry': [None] * 10  # Geometría vacía para evitar errores
+        'geometry': [None] * 10
     }
     return pd.DataFrame(sample_data)
 
-# Cargar datos una vez al inicio
-data_unida_global, df_global = load_and_process_data()
-
-# Callbacks principales - CORREGIDO
-@callback(
-    [Output('folium-map', 'srcDoc'),
-     Output('total-oficinas', 'children'),
-     Output('total-departamentos', 'children'),
-     Output('min-oficinas', 'children'),
-     Output('max-oficinas', 'children'),
-     Output('top-departments-chart', 'figure'),
-     Output('distribution-chart', 'figure'),
-     Output('data-table-container', 'children'),
-     Output('region-filter', 'options')],
-    [Input('map-type-selector', 'value'),
-     Input('office-slider', 'value'),
-     Input('region-filter', 'value'),
-     Input('reset-filters', 'n_clicks')]
-)
-def update_dashboard(map_type, office_range, selected_regions, n_clicks):
-    try:
-        if data_unida_global is None or df_global is None:
-            raise Exception("No se pudieron cargar los datos")
-        
-        # Aplicar filtros - CORREGIDO
-        filtered_data = data_unida_global.copy()
-        
-        # Manejar caso cuando selected_regions es None o vacío
-        if selected_regions:
-            filtered_data = filtered_data[filtered_data['DPTO_CNMBR_NORM'].isin(selected_regions)]
-        
-        # Aplicar filtro de rango de oficinas
-        filtered_data = filtered_data[
-            (filtered_data['cantidad_oficinas'] >= office_range[0]) & 
-            (filtered_data['cantidad_oficinas'] <= office_range[1])
-        ]
-        
-        # Calcular estadísticas
-        total_oficinas = int(df_global.shape[0]) if not df_global.empty else 71
-        total_departamentos = len(data_unida_global[data_unida_global['cantidad_oficinas'] > 0])
-        max_oficinas = int(data_unida_global['cantidad_oficinas'].max())
-        min_oficinas = int(data_unida_global[data_unida_global['cantidad_oficinas'] > 0]['cantidad_oficinas'].min())
-        
-        # Crear componentes
-        mapa = create_folium_map(data_unida_global, filtered_data, map_type)
-        map_html = mapa._repr_html_() if mapa else "<div>Error creando mapa</div>"
-        
-        top_chart = create_top_departments_chart(data_unida_global)
-        dist_chart = create_distribution_chart(data_unida_global)
-        table = create_data_table(data_unida_global)
-        
-        # Opciones para el filtro de región
-        region_options = [{'label': depto, 'value': depto} 
-                        for depto in sorted(data_unida_global['DPTO_CNMBR_NORM'].unique())]
-
-        return (map_html, total_oficinas, total_departamentos, min_oficinas, 
-                max_oficinas, top_chart, dist_chart, table, region_options)
-    
-    except Exception as e:
-        print(f"Error en update_dashboard: {e}")
-        # Retornar valores por defecto en caso de error
-        empty_fig = go.Figure()
-        empty_fig.add_annotation(text="Error cargando los datos", 
-                               xref="paper", yref="paper", x=0.5, y=0.5, 
-                               showarrow=False)
-        
-        region_options = [{'label': 'Error', 'value': 'error'}]
-        
-        return ("<div style='padding: 20px; text-align: center;'><h3>Error cargando los datos</h3></div>", 
-                "71", "33", "1", "20", empty_fig, empty_fig, 
-                html.Div("Error cargando datos"), region_options)
-
 def create_folium_map(all_data, filtered_data, map_type):
-    """Crear mapa Folium con sistema de dos capas - CORREGIDO"""
+    """Crear mapa Folium con sistema de dos capas"""
     mapa = folium.Map(location=[4.5709, -74.2973], zoom_start=5)
     
     # PRIMERA CAPA: Todos los departamentos en gris claro
@@ -534,29 +159,6 @@ def create_folium_map(all_data, filtered_data, map_type):
             
             style_function = thematic_style_function
             
-            # Leyenda para mapa temático
-            legend_html = '''
-            <div style="position: fixed; bottom: 50px; left: 50px; width: 200px; 
-                 background-color: white; border:2px solid grey; z-index:9999;
-                 font-size:10px; padding: 10px;">
-                 <b>Cantidad de Oficinas</b><br>
-            '''
-            
-            for i, valor in enumerate(valores_unicos):
-                color = colores_ylorrd_compacta[i % len(colores_ylorrd_compacta)]
-                legend_html += f'''
-                <i style="background:{color}; width: 12px; height: 12px; 
-                display: inline-block; margin-right: 5px; opacity: 0.8; border: 1px solid black;"></i>
-                {valor} oficina(s)<br>
-                '''
-            
-            legend_html += '''
-                <i style="background:#F7F7F7FF; width: 12px; height: 12px; 
-                display: inline-block; margin-right: 5px; opacity: 0.8; border: 1px solid black;"></i>
-                Otros departamentos<br>
-            </div>
-            '''
-            
         else:  # Mapa con escala de azules
             colores_azules = ["#9FBFFFFF", "#3E7DFBFF", "#0000FFE1", "#000080", '#FFFF00FF']
             valores_unicos = sorted(filtered_data['cantidad_oficinas'].unique())
@@ -572,29 +174,6 @@ def create_folium_map(all_data, filtered_data, map_type):
                 }
             
             style_function = blues_style_function
-            
-            # Leyenda para mapa azul
-            legend_html = '''
-            <div style="position: fixed; bottom: 50px; left: 50px; width: 200px; 
-                 background-color: white; border:2px solid grey; z-index:9999;
-                 font-size:10px; padding: 10px;">
-                 <b>Cantidad de Oficinas</b><br>
-            '''
-            
-            for i, valor in enumerate(valores_unicos):
-                color = colores_azules[i % len(colores_azules)]
-                legend_html += f'''
-                <i style="background:{color}; width: 12px; height: 12px; 
-                display: inline-block; margin-right: 5px; opacity: 0.8; border: 1px solid black;"></i>
-                {valor} oficina(s)<br>
-                '''
-            
-            legend_html += '''
-                <i style="background:#F7F7F7FF; width: 12px; height: 12px; 
-                display: inline-block; margin-right: 5px; opacity: 0.8; border: 1px solid black;"></i>
-                Otros departamentos<br>
-            </div>
-            '''
         
         # Añadir la segunda capa con los datos filtrados
         folium.GeoJson(
@@ -606,28 +185,12 @@ def create_folium_map(all_data, filtered_data, map_type):
                 localize=True
             )
         ).add_to(mapa)
-        
-        # Añadir leyenda
-        mapa.get_root().html.add_child(folium.Element(legend_html))
     
     return mapa
 
-def get_heatmap_color(value):
-    """Obtener color para mapa de calor"""
-    if value == 0:
-        return '#F7F7F7'
-    elif value <= 1:
-        return '#B0E57C'
-    elif value <= 2:
-        return '#FFD700'
-    elif value <= 3:
-        return '#FF8C00'
-    else:
-        return '#FF4500'
-
 def create_top_departments_chart(data):
     """Crear gráfico de top 7 departamentos"""
-    top_data = data.nlargest(7, 'cantidad_oficinas')  # Cambiado de 10 a 7
+    top_data = data.nlargest(7, 'cantidad_oficinas')
     
     # Colores específicos para cada categoría
     color_map = {
@@ -693,69 +256,323 @@ def create_distribution_chart(data):
     
     return fig
 
-def create_data_table(data):
-    """Crear tabla de datos mejorada estéticamente"""
-    table_data = data[['DPTO_CNMBR', 'cantidad_oficinas']].sort_values('cantidad_oficinas', ascending=False)
-    
-    # Crear filas de la tabla con mejor estilo
-    rows = []
-    for idx, row in table_data.iterrows():
-        # Asignar colores basados en el número de oficinas
-        if row['cantidad_oficinas'] >= 4:
-            row_style = {'backgroundColor': '#e8f5e8', 'borderBottom': '1px solid #ddd'}
-            badge_color = '#28a745'
-        elif row['cantidad_oficinas'] == 3:
-            row_style = {'backgroundColor': '#fff3cd', 'borderBottom': '1px solid #ddd'}
-            badge_color = '#ffc107'
-        elif row['cantidad_oficinas'] == 2:
-            row_style = {'backgroundColor': '#ffeaa7', 'borderBottom': '1px solid #ddd'}
-            badge_color = '#fd7e14'
-        else:
-            row_style = {'backgroundColor': '#f8f9fa', 'borderBottom': '1px solid #ddd'}
-            badge_color = '#6c757d'
-        
-        badge_style = {
-            'backgroundColor': badge_color,
-            'color': 'white',
-            'padding': '5px 10px',
-            'borderRadius': '15px',
-            'fontSize': '12px',
-            'fontWeight': 'bold',
-            'minWidth': '40px',
-            'textAlign': 'center',
-            'display': 'inline-block'
-        }
-        
-        rows.append(html.Tr([
-            html.Td(row['DPTO_CNMBR'], style={'padding': '12px', 'fontWeight': '500'}),
-            html.Td(
-                html.Span(f"{int(row['cantidad_oficinas'])}", style=badge_style),
-                style={'padding': '12px', 'textAlign': 'center'}
-            )
-        ], style=row_style))
-    
-    table = html.Table([
-        html.Thead([
-            html.Tr([
-                html.Th('Departamento', style={'padding': '15px', 'textAlign': 'left', 'borderBottom': '2px solid #2c3e50', 
-                                             'backgroundColor': '#34495e', 'color': 'white', 'fontSize': '14px'}),
-                html.Th('Número de Oficinas', style={'padding': '15px', 'textAlign': 'center', 'borderBottom': '2px solid #2c3e50',
-                                                   'backgroundColor': '#34495e', 'color': 'white', 'fontSize': '14px'})
-            ])
-        ]),
-        html.Tbody(rows)
-    ], style={'width': '100%', 'borderCollapse': 'collapse', 'fontFamily': 'Arial, sans-serif'})
-    
-    return table
+def style_dataframe(row):
+    """Función corregida para aplicar estilos a cada fila"""
+    if row['cantidad_oficinas'] >= 4:
+        return ['background-color: #e8f5e8', 'background-color: #e8f5e8']
+    elif row['cantidad_oficinas'] == 3:
+        return ['background-color: #fff3cd', 'background-color: #fff3cd']
+    elif row['cantidad_oficinas'] == 2:
+        return ['background-color: #ffeaa7', 'background-color: #ffeaa7']
+    else:
+        return ['background-color: #f8f9fa', 'background-color: #f8f9fa']
 
-# Callback para resetear filtros
-@callback(
-    [Output('office-slider', 'value'),
-     Output('region-filter', 'value')],
-    Input('reset-filters', 'n_clicks')
-)
-def reset_filters(n_clicks):
-    return [1, 20], []
+def main():
+    # Header principal
+    st.markdown("""
+    <div class="main-header">
+        <div style="max-width: 1200px; margin: 0 auto; text-align: center;">
+            <h1 style="color: white; margin-bottom: 10px;">Análisis de la Red de Oficinas del Fondo Nacional del Ahorro</h1>
+            <p style="color: white; margin-bottom: 0px; font-size: 18px;">Dashboard interactivo - Distribución territorial de oficinas en Colombia</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Cargar datos
+    data_unida_global, df_global = load_and_process_data()
+    
+    # Pestañas
+    tab1, tab2, tab3 = st.tabs(["📋 Contexto y Metodología", "📊 Análisis Visual", "📈 Conclusiones"])
+    
+    with tab1:
+        st.markdown("""
+        <div class="section-card">
+            <h2 style="color: #2c3e50; margin-bottom: 20px; text-align: center;">Contexto del Estudio</h2>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("""
+        El presente informe analiza la estructura y distribución de la red de oficinas del **Fondo Nacional del Ahorro (FNA)**, 
+        institución de carácter oficial que cumple una función fundamental en el sistema de ahorro y crédito para vivienda en Colombia. 
+        Los datos utilizados en este estudio, actualizados al **25 de agosto de 2025**, fueron proporcionados oficialmente por el 
+        Fondo Nacional del Ahorro a través del portal de datos abiertos del Gobierno Colombiano en 
+        [datos.gov.co](https://www.datos.gov.co/Vivienda-Ciudad-y-Territorio/Oficinas-Fondo-Nacional-del-Ahorro/h3sz-zqij/about_data).
+        """)
+        
+        st.markdown("""
+        El conjunto de datos constituye un registro completo de la infraestructura física de atención al público del FNA, donde cada 
+        registro representa una **sede u oficina operativa** de la entidad en el territorio nacional. Esta información es de vital 
+        importancia para comprender la capacidad institucional de cobertura, el acceso a servicios financieros de vivienda por parte 
+        de la ciudadanía y la presencia territorial de una de las entidades más importantes del sector.
+        """)
+        
+        st.markdown("""
+        La disponibilidad de estos datos mediante la política de **Gobierno Abierto** implementada por el Gobierno de Colombia, 
+        refleja el compromiso del Estado con la transparencia y la rendición de cuentas, permitiendo a ciudadanos, investigadores 
+        y tomadores de decisiones realizar análisis basados en evidencia sobre la prestación de servicios públicos.
+        """)
+        
+        st.markdown("### Metodología")
+        st.markdown("""
+        - Fuente de datos: Portal de Datos Abiertos de Colombia (datos.gov.co)
+        - Shapefile: Departamento Administrativo Nacional de Estadística (DANE)
+        - Procesamiento: Python con Pandas, GeoPandas y Folium
+        - Visualización: Streamlit y Plotly para interactividad
+        """)
+        
+        st.markdown("### Objetivos del Análisis")
+        st.markdown("""
+        - Identificar patrones de distribución territorial de las oficinas del FNA
+        - Analizar desigualdades regionales en la cobertura de servicios
+        - Visualizar la concentración geográfica de la infraestructura financiera
+        - Proporcionar insights para políticas públicas de inclusión financiera
+        """)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    with tab2:
+        if data_unida_global is not None and not data_unida_global.empty:
+            # Estadísticas clave
+            col1, col2, col3, col4 = st.columns(4)
+            
+            total_oficinas = int(df_global.shape[0]) if not df_global.empty else 71
+            total_departamentos = len(data_unida_global[data_unida_global['cantidad_oficinas'] > 0])
+            max_oficinas = int(data_unida_global['cantidad_oficinas'].max())
+            min_oficinas = int(data_unida_global[data_unida_global['cantidad_oficinas'] > 0]['cantidad_oficinas'].min())
+            
+            with col1:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div style="font-size: 2.5rem; font-weight: bold; color: #2c3e50;">{total_oficinas}</div>
+                    <div style="font-size: 1rem; color: #7f8c8d;">Total Oficinas</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div style="font-size: 2.5rem; font-weight: bold; color: #2c3e50;">{total_departamentos}</div>
+                    <div style="font-size: 1rem; color: #7f8c8d;">Departamentos con Cobertura</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col3:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div style="font-size: 2.5rem; font-weight: bold; color: #2c3e50;">{min_oficinas}</div>
+                    <div style="font-size: 1rem; color: #7f8c8d;">Mín. Oficinas por Depto</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col4:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div style="font-size: 2.5rem; font-weight: bold; color: #2c3e50;">{max_oficinas}</div>
+                    <div style="font-size: 1rem; color: #7f8c8d;">Máx. Oficinas por Depto</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Filtros en sidebar
+            st.sidebar.header("Controles de Visualización")
+            
+            map_type = st.sidebar.selectbox(
+                "Tipo de Mapa:",
+                options=['🎨 Mapa Temático (Escala de Colores)', '🔵 Mapa Temático (Escala de Azules)'],
+                index=0
+            )
+            
+            map_type_value = 'thematic' if 'Colores' in map_type else 'blues'
+            
+            office_range = st.sidebar.slider(
+                "Filtrar por Número de Oficinas:",
+                min_value=1,
+                max_value=20,
+                value=(1, 20),
+                step=1
+            )
+            
+            region_options = sorted(data_unida_global['DPTO_CNMBR_NORM'].unique())
+            selected_regions = st.sidebar.multiselect(
+                "Filtrar por Región:",
+                options=region_options,
+                placeholder="Seleccione regiones..."
+            )
+            
+            if st.sidebar.button("🔄 Resetear Filtros"):
+                st.rerun()
+            
+            # Aplicar filtros
+            filtered_data = data_unida_global.copy()
+            
+            if selected_regions:
+                filtered_data = filtered_data[filtered_data['DPTO_CNMBR_NORM'].isin(selected_regions)]
+            
+            filtered_data = filtered_data[
+                (filtered_data['cantidad_oficinas'] >= office_range[0]) & 
+                (filtered_data['cantidad_oficinas'] <= office_range[1])
+            ]
+            
+            # Mapa y controles - MEJORADA LA PROPORCIÓN
+            col_map, col_info = st.columns([70, 30])
+            
+            with col_map:
+                st.markdown("""
+                <div class="section-card">
+                    <div class="section-header">Distribución Geográfica de Oficinas</div>
+                    <div style="padding: 1rem;">
+                """, unsafe_allow_html=True)
+                
+                mapa = create_folium_map(data_unida_global, filtered_data, map_type_value)
+                st_folium(mapa, width=None, height=500, use_container_width=True)
+                
+                st.markdown("</div></div>", unsafe_allow_html=True)
+            
+            with col_info:
+                st.markdown("""
+                <div class="section-card">
+                    <div class="section-header">Leyenda del Mapa</div>
+                    <div style="padding: 1.5rem;">
+                        <p><strong>Cantidad de Oficinas:</strong></p>
+                        <p>🟢 1 oficina<br>
+                        🟡 2 oficinas<br>
+                        🟠 3 oficinas<br>
+                        🔴 4 oficinas<br>
+                        🟣 20 oficinas (Bogotá)<br>
+                        ⚪ Otros departamentos</p>
+                        <p style="margin-top: 20px; font-size: 0.9rem; color: #666;">
+                        <em>Use los controles en el sidebar para filtrar los datos del mapa.</em>
+                        </p>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Gráficos - MEJORADA LA PROPORCIÓN
+            st.markdown('<div style="margin-top: 2rem;">', unsafe_allow_html=True)
+            col_chart1, col_chart2 = st.columns(2)
+            
+            with col_chart1:
+                st.markdown("""
+                <div class="section-card">
+                    <div class="section-header">Top 7 Departamentos con Más Oficinas</div>
+                    <div style="padding: 1rem;">
+                """, unsafe_allow_html=True)
+                top_chart = create_top_departments_chart(data_unida_global)
+                st.plotly_chart(top_chart, use_container_width=True)
+                st.markdown("</div></div>", unsafe_allow_html=True)
+            
+            with col_chart2:
+                st.markdown("""
+                <div class="section-card">
+                    <div class="section-header">Distribución por Número de Oficinas</div>
+                    <div style="padding: 1rem;">
+                """, unsafe_allow_html=True)
+                dist_chart = create_distribution_chart(data_unida_global)
+                st.plotly_chart(dist_chart, use_container_width=True)
+                st.markdown("</div></div>", unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Tabla de datos
+            st.markdown("""
+            <div class="section-card">
+                <div class="section-header">📋 Detalle de Oficinas por Departamento</div>
+                <div style="padding: 1rem;">
+            """, unsafe_allow_html=True)
+            
+            table_data = data_unida_global[['DPTO_CNMBR', 'cantidad_oficinas']].sort_values('cantidad_oficinas', ascending=False)
+            
+            # Aplicar estilos a la tabla
+            styled_df = table_data.style.apply(style_dataframe, axis=1)
+            
+            st.dataframe(styled_df, width='stretch', height=400)
+            
+            st.markdown("</div></div>", unsafe_allow_html=True)
+        
+        else:
+            st.error("No se pudieron cargar los datos. Verifique que los archivos estén en la carpeta 'data/'")
+    
+    with tab3:
+        st.markdown("""
+        <div class="section-card">
+            <h2 style="color: #2c3e50; margin-bottom: 25px; text-align: center;">
+                Interpretación de los Resultados y Conclusiones
+            </h2>
+        """, unsafe_allow_html=True)
+        
+        # Contenido mejorado usando funciones nativas de Streamlit
+        st.markdown("### Distribución de Oficinas del Fondo Nacional del Ahorro por Departamento")
+        
+        st.markdown("#### Regiones con Valores Más Altos:")
+        st.markdown("""
+        - **Bogotá D.C. domina ampliamente** con 20 oficinas, concentrando el mayor número a nivel nacional.
+        - **Región Andina Central**: Departamentos como Cundinamarca, Antioquia y Valle del Cauca presentan 4 oficinas cada uno, mostrando una presencia significativa.
+        - **Zonas Intermedias**: Tolima, Santander y Nariño tienen 3 oficinas cada uno, indicando una cobertura media-alta.
+        """)
+        
+        st.markdown("#### Desigualdades Territoriales Evidentes:")
+        st.markdown("""
+        - **Disparidad Extrema**: Bogotá tiene 20 veces más oficinas que la mayoría de departamentos (que solo tienen 1).
+        - **Centralismo Marcado**: La región central (Andina) concentra la mayoría de oficinas, mientras que:
+            - Región Caribe: Ningún departamento supera las 2 oficinas
+            - Región Pacífica: Chocó y Cauca solo tienen 1 oficina cada uno
+            - Región Amazónica: Amazonas, Guainía, Guaviare, Vaupés tienen solo 1 oficina para vastos territorios
+            - Región Orinoquía: Arauca, Casanare, Vichada con apenas 1 oficina cada uno
+        """)
+        
+        st.markdown("#### Factores Explicativos de las Diferencias:")
+        
+        st.markdown("##### Factores Demográficos y Económicos:")
+        st.markdown("""
+        - Densidad Poblacional: Bogotá y departamentos andinos tienen mayor población
+        - Desarrollo Económico: Regiones con mayor actividad económica demandan más servicios financieros
+        - Urbanización: Áreas urbanas concentran mayor demanda de créditos de vivienda
+        """)
+        
+        st.markdown("##### Factores Geográficos y Logísticos:")
+        st.markdown("""
+        - Accesibilidad: Departamentos remotos (Amazonas, Guainía) presentan desafíos de conectividad
+        - Extensión Territorial: Departamentos grandes con baja densidad (Vichada, Guaviare) tienen menor cobertura
+        """)
+        
+        st.markdown("##### Factores Institucionales y Históricos:")
+        st.markdown("""
+        - Enfoque de Mercado: Priorización de zonas con mayor potencial de cartera
+        - Infraestructura Existente: Limitaciones en instalación de oficinas en zonas periféricas
+        """)
+        
+        # Conclusión Principal
+        st.markdown("---")
+        st.markdown("#### Conclusión Principal")
+        st.info("""
+        **"La distribución refleja patrones históricos de desarrollo desigual en Colombia, donde las regiones centrales 
+        concentran la infraestructura financiera mientras las periféricas enfrentan limitaciones de acceso."**
+        """)
+        
+        st.markdown("---")
+        st.markdown("### La Georreferenciación como Herramienta Clave para el Análisis Social")
+        
+        st.markdown("""
+        El análisis georreferenciado de la distribución de oficinas del Fondo Nacional del Ahorro evidencia la 
+        **capacidad transformadora de los datos espaciales** en estudios sociales. La visualización espacial no solo permite identificar patrones geográficos de concentración y exclusión, sino que 
+        **revela dimensiones críticas del desarrollo territorial** que pasarían desapercibidas en análisis tabulares convencionales.
+        """)
+        
+        st.markdown("""
+        La georreferenciación **materializa las desigualdades**, transformando datos abstractos en realidades tangibles: muestra cómo el centralismo bogotano se impone sobre las periferias, cómo la región Caribe a pesar de su extensión y población mantiene una cobertura marginal, y cómo la Amazonia y Orinoquia enfrentan desafíos de inclusión financiera proporcionales a su vastedad territorial.
+        """)
+        
+        st.markdown("""
+        Este ejercicio demuestra que **la geografía no es solo un contenedor de fenómenos sociales, sino un factor activo** que configura oportunidades de acceso. La disposición espacial de la infraestructura financiera refleja y, a la vez, reproduce dinámicas de desarrollo desigual, haciendo evidente la 
+        **necesidad de políticas públicas con enfoque territorial diferenciado**.
+        """)
+        
+        st.markdown("#### Aportes de la Georreferenciación para la Equidad")
+        st.markdown("""
+        - Identificar brechas de cobertura con precisión
+        - Priorizar inversiones en territorios históricamente marginados  
+        - Diseñar estrategias adaptadas a las realidades regionales
+        - Evaluar impactos de políticas con dimensión espacial
+        """)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
 
 if __name__ == '__main__':
-    app.run_server(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 8050)))
+    main()
