@@ -3,6 +3,4 @@ pandas==2.2.3
 geopandas
 shapely==2.0.6
 pyproj
-fiona==1.9.6
-matplotlib==3.9.2
 
