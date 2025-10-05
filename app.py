@@ -55,14 +55,14 @@ st.markdown("""
 def load_and_process_data():
     """Cargar y procesar los datos una vez al inicio"""
     try:
-        # Ruta CORREGIDA - incluye la subcarpeta MGN2021_DPTO_POLITICO
+        
         shapefile_path = "data/MGN2021_DPTO_POLITICO/MGN_DPTO_POLITICO.shp"
         data = gpd.read_file(shapefile_path, encoding='utf-8')
         
         # Cargar datos de oficinas
         df = pd.read_csv("data/Oficinas_Fondo_Nacional_del_Ahorro_20250906.csv")
         
-        # Procesamiento de datos (similar a tu análisis original)
+        # Procesamiento de datos
         df["departamentos"] = df["departamentos"].str.upper()
         df["departamentos"].replace(to_replace="HONDA", value="TOLIMA", inplace=True)
         
@@ -411,7 +411,7 @@ def main():
                 (filtered_data['cantidad_oficinas'] <= office_range[1])
             ]
             
-            # Mapa y controles - MEJORADA LA PROPORCIÓN
+            # Mapa y controles 
             col_map, col_info = st.columns([70, 30])
             
             with col_map:
@@ -445,7 +445,7 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
             
-            # Gráficos - MEJORADA LA PROPORCIÓN
+            # Gráficos 
             st.markdown('<div style="margin-top: 2rem;">', unsafe_allow_html=True)
             col_chart1, col_chart2 = st.columns(2)
             
@@ -497,7 +497,7 @@ def main():
             </h2>
         """, unsafe_allow_html=True)
         
-        # Contenido mejorado usando funciones nativas de Streamlit
+
         st.markdown("### Distribución de Oficinas del Fondo Nacional del Ahorro por Departamento")
         
         st.markdown("#### Regiones con Valores Más Altos:")
